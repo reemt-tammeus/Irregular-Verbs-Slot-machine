@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verb Machine Pro - Ultra Stable</title>
+    <title>Irregular Verb Slot Machine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         :root {
@@ -85,7 +85,7 @@
     </div>
 
     <div class="machine" id="machineUI">
-        <div class="status-msg" id="statusText">Bereit!</div>
+        <div class="status-msg" id="statusText">Bereit! (Tippe auf einen Button)</div>
         <div class="reel-box">
             <div class="reel-word" id="displayV1">READY</div>
             <div style="font-size: 0.55rem; color: var(--secondary); margin-top: 4px;" id="badgeText">—</div>
@@ -207,7 +207,7 @@ const Graphics = (function() {
 // APP CORE
 // ============================================================
 const App = {
-    state: { grade:'Y5', mode:'intro', pool:[], used:[], current:null, isSpinning:false, audio:null },
+    state: { grade:'Y5', mode:'intro', pool:[], used:[], current:null, isSpinning:false, unlocked: false },
     dom: {},
 
     init() {
@@ -218,12 +218,44 @@ const App = {
         this.resetPool();
     },
 
+    unlockAudio() {
+        if (this.state.unlocked) return;
+        
+        // 1. Web Audio API (für die UI Sounds) entsperren
+        if (AudioSys.ctx && AudioSys.ctx.state === 'suspended') {
+            AudioSys.ctx.resume();
+        } else if (!AudioSys.ctx) {
+            AudioSys.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        // Stummen Ton abspielen (iOS Trick)
+        try {
+            const buffer = AudioSys.ctx.createBuffer(1, 1, 22050);
+            const source = AudioSys.ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(AudioSys.ctx.destination);
+            if (source.start) { source.start(0); } else { source.noteOn(0); }
+        } catch(e) {}
+
+        // 2. Speech Synthesis (für die Vokabeln) entsperren
+        const u = new SpeechSynthesisUtterance('');
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+
+        this.state.unlocked = true;
+    },
+
     cacheDOM() {
         const ids = ['displayV1','valV1','valV2','valV3','card1','card2','card3','actionBtn','checkBtn','speakBtn','resetBtn','statusText','progressLabel','cycleLabel','progressFill','badgeText','gradeSwitcher'];
         ids.forEach(id => this.dom[id] = document.getElementById(id));
     },
 
     bindEvents() {
+        // iOS Audio Unlocker - Triggered auf das ERSTE Tippen
+        const unlockHandler = () => this.unlockAudio();
+        document.body.addEventListener('click', unlockHandler, { once: true });
+        document.body.addEventListener('touchstart', unlockHandler, { once: true });
+
         this.dom.actionBtn.onclick = () => (this.state.mode==='intro') ? this.nextIntro() : this.spin();
         this.dom.checkBtn.onclick = () => this.reveal();
         this.dom.speakBtn.onclick = () => this.speakAll();
@@ -345,13 +377,21 @@ const App = {
     },
 
     speak(txt) {
-        if(this.state.audio) this.state.audio.pause();
-        this.state.audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(txt.replace(/\//g, ' or '))}&tl=en&client=tw-ob`);
-        this.state.audio.play().catch(() => {
-            speechSynthesis.cancel();
-            const u = new SpeechSynthesisUtterance(txt); u.lang='en-US'; u.rate=0.8;
-            speechSynthesis.speak(u);
-        });
+        // Laufende Sprache sofort abbrechen, sonst blockiert es auf iOS
+        window.speechSynthesis.cancel();
+        
+        const textToSpeak = txt.replace(/\//g, ' or ');
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        
+        // Sprach-Einstellungen optimieren
+        utterance.lang = 'en-US';
+        utterance.rate = 0.85; 
+        utterance.volume = 1.0;
+        
+        // iPhone spezifisch: Timeout hilft gegen hängende Callstacks bei asynchronen Aufrufen
+        setTimeout(() => {
+            window.speechSynthesis.speak(utterance);
+        }, 50);
     },
 
     speakAll() {
