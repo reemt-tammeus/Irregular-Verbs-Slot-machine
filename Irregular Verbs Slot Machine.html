@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verb Machine Pro - Ultra Stable</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --primary: #7c3aed; --secondary: #a78bfa; --accent: #f59e0b;
+            --bg: #0c0a1f; --text: #f5f3ff; --card-bg: rgba(20, 15, 45, 0.9);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text);
+            min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; overflow-x: hidden;
+        }
+        
+        /* WICHTIG: Der Hintergrund darf KEINE Klicks fangen */
+        #main-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        
+        .ui-layer { position: relative; z-index: 10; width: 100%; max-width: 550px; display: flex; flex-direction: column; align-items: center; }
+        
+        h1 { font-size: 2.2rem; margin-bottom: 10px; background: linear-gradient(90deg, var(--accent), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase; letter-spacing: 3px; text-align: center; }
+        
+        .grade-switcher { display: flex; gap: 5px; width: 100%; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+        .g-btn { 
+            padding: 8px 12px; border: 1px solid var(--primary); background: rgba(0,0,0,0.6); 
+            color: var(--secondary); border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-weight: bold; transition: 0.3s;
+        }
+        .g-btn.active { background: var(--primary); color: white; box-shadow: 0 0 15px var(--primary); border-color: #fff; }
+
+        .mode-switcher { display: flex; background: rgba(0,0,0,0.3); border: 2px solid var(--accent); border-radius: 12px; overflow: hidden; width: 100%; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 10px; border: none; background: transparent; color: var(--secondary); font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase; font-size: 0.8rem; }
+        .mode-btn.active { background: var(--accent); color: #000; }
+
+        .machine { background: var(--card-bg); border: 3px solid var(--primary); border-radius: 20px; padding: 20px; width: 100%; box-shadow: 0 0 40px rgba(124, 58, 237, 0.3); backdrop-filter: blur(10px); }
+        .reel-box { background: #000; border: 2px solid var(--accent); border-radius: 15px; padding: 15px; text-align: center; margin-bottom: 15px; }
+        .reel-word { font-size: 2.5rem; font-weight: 900; color: var(--accent); font-family: 'Courier New', monospace; min-height: 50px; }
+        .reel-word.spinning { animation: blurSpin 0.1s infinite; }
+        
+        @keyframes blurSpin { 0% { transform: translateY(-3px); opacity: 0.6; filter: blur(2px); } 100% { transform: translateY(3px); opacity: 0.6; filter: blur(2px); } }
+
+        .forms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
+        .card { background: rgba(0,0,0,0.4); border: 1px solid var(--primary); border-radius: 10px; padding: 12px 4px; text-align: center; transition: 0.3s; }
+        .card.revealed { border-color: var(--accent); box-shadow: 0 0 15px rgba(245, 158, 11, 0.3); }
+        .label { font-size: 0.55rem; text-transform: uppercase; color: var(--secondary); margin-bottom: 4px; }
+        .value { font-family: 'Courier New', monospace; font-weight: bold; font-size: 0.95rem; color: var(--accent); }
+        .value.hidden-val { color: var(--primary); opacity: 0.2; }
+
+        .progress-container { width: 100%; margin-bottom: 15px; }
+        .progress-info { display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 4px; color: var(--secondary); }
+        .progress-bar { background: #111; height: 6px; border-radius: 3px; overflow: hidden; border: 1px solid var(--primary); }
+        .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: 0.5s; }
+
+        .btn-row { display: flex; gap: 8px; margin-bottom: 8px; width: 100%; }
+        button.main-btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; font-size: 0.85rem; }
+        button.main-btn:active { transform: scale(0.96); }
+        button.main-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-spin { background: #16a34a; color: white; box-shadow: 0 4px 0 #057a2f; }
+        .btn-check { background: var(--accent); color: black; box-shadow: 0 4px 0 #b45309; }
+        .btn-utility { background: #4c1d95; color: white; font-size: 0.75rem; }
+        .status-msg { height: 18px; font-size: 0.7rem; color: var(--accent); text-align: center; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+
+<canvas id="main-canvas"></canvas>
+
+<div class="ui-layer">
+    <h1>Verb Machine</h1>
+
+    <div class="grade-switcher" id="gradeSwitcher">
+        <button class="g-btn active" data-grade="Y5">Y5</button>
+        <button class="g-btn" data-grade="Y6">Y6</button>
+        <button class="g-btn" data-grade="Y7">Y7</button>
+        <button class="g-btn" data-grade="Y8">Y8</button>
+        <button class="g-btn" data-grade="Y9">Y9</button>
+        <button class="g-btn" data-grade="Y10">Y10</button>
+    </div>
+
+    <div class="mode-switcher">
+        <button class="mode-btn active" id="btnModeIntro">Lernen</button>
+        <button class="mode-btn" id="btnModePractice">Slot Machine</button>
+    </div>
+
+    <div class="machine" id="machineUI">
+        <div class="status-msg" id="statusText">Bereit!</div>
+        <div class="reel-box">
+            <div class="reel-word" id="displayV1">READY</div>
+            <div style="font-size: 0.55rem; color: var(--secondary); margin-top: 4px;" id="badgeText">—</div>
+        </div>
+        <div class="forms-grid">
+            <div class="card" id="card1"><div class="label">V1</div><div class="value" id="valV1">—</div></div>
+            <div class="card" id="card2"><div class="label">V2</div><div class="value hidden-val" id="valV2">???</div></div>
+            <div class="card" id="card3"><div class="label">V3</div><div class="value hidden-val" id="valV3">???</div></div>
+        </div>
+        <div class="progress-container">
+            <div class="progress-info"><span id="progressLabel">0 / 0</span><span id="cycleLabel">Cycle 1</span></div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+        <div class="btn-row">
+            <button class="main-btn btn-spin" id="actionBtn">Spin!</button>
+            <button class="main-btn btn-check" id="checkBtn" disabled>Check</button>
+        </div>
+        <div class="btn-row">
+            <button class="main-btn btn-utility" id="speakBtn" disabled>🔊 Vorlesen</button>
+            <button class="main-btn btn-utility" id="resetBtn">🔄 Reset</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// DATA SETS (Y5-Y10) - KOMPLETT INTEGRIERT
+// ============================================================
+const RAW_VERBS = {
+    Y5: "be-was/were-been, buy-bought-bought, come-came-come, do-did-done, drink-drank-drunk, eat-ate-eaten, fall-fell-fallen, feed-fed-fed, feel-felt-felt, find-found-found, forget-forgot-forgotten, get-got-got, give-gave-given, go-went-gone, have-had-had, hear-heard-heard, know-knew-known, make-made-made, meet-met-met, put-put-put, read-read-read, run-ran-run, say-said-said, see-saw-seen, sing-sang-sung, sit-sat-sat, sleep-slept-slept, spend-spent-spent, stand-stood-stood, steal-stole-stolen, swim-swam-swum, take-took-taken, tell-told-told, think-thought-thought, wear-wore-worn, win-won-won, write-wrote-written",
+    Y6: "be-was/were-been, beat-beat-beaten, become-became-become, bring-brought-brought, build-built-built, buy-bought-bought, catch-caught-caught, choose-chose-chosen, come-came-come, cost-cost-cost, do-did-done, draw-drew-drawn, drink-drank-drunk, drive-drove-driven, eat-ate-eaten, fall-fell-fallen, feed-fed-fed, feel-felt-felt, fight-fought-fought, find-found-found, fly-flew-flown, forget-forgot-forgotten, get-got-got, give-gave-given, go-went-gone, hang-hung-hung, have-had-had, hear-heard-heard, hide-hid-hidden, hit-hit-hit, hold-held-held, keep-kept-kept, know-knew-known, leave-left-left, lose-lost-lost, make-made-made, meet-met-met, pay-paid-paid, put-put-put, read-read-read, ride-rode-ridden, run-ran-run, say-said-said, see-saw-seen, sell-sold-sold, send-sent-sent, shine-shone-shone, show-showed-shown, sing-sang-sung, sit-sat-sat, sleep-slept-slept, speak-spoke-spoken, spend-spent-spent, stand-stood-stood, steal-stole-stolen, swim-swam-swum, take-took-taken, teach-taught-taught, tell-told-told, think-thought-thought, throw-threw-thrown, understand-understood-understood, wake up-woke up-woken up, wear-wore-worn, win-won-won, write-wrote-written",
+    Y7: "be-was/were-been, beat-beat-beaten, become-became-become, begin-began-begun, bet-bet-bet, bleed-bled-bled, break-broke-broken, bring-brought-brought, build-built-built, burn-burnt/burned-burnt/burned, buy-bought-bought, catch-caught-caught, choose-chose-chosen, come-came-come, cost-cost-cost, cut-cut-cut, deal-dealt-dealt, do-did-done, draw-drew-drawn, dream-dreamt/dreamed-dreamt/dreamed, drink-drank-drunk, drive-drove-driven, eat-ate-eaten, fall-fell-fallen, feed-fed-fed, feel-felt-felt, fight-fought-fought, find-found-found, fly-flew-flown, forget-forgot-forgotten, get-got-got, give-gave-given, go-went-gone, hang-hung-hung, have-had-had, hear-heard-heard, hide-hid-hidden, hit-hit-hit, hold-held-held, hurt-hurt-hurt, keep-kept-kept, know-knew-known, leave-left-left, let-let-let, lose-lost-lost, make-made-made, mean-meant-meant, meet-met-met, pay-paid-paid, put-put-put, read-read-read, ride-rode-ridden, ring-rang-rung, run-ran-run, say-said-said, see-saw-seen, sell-sold-sold, send-sent-sent, set off-set off-set off, shine-shone-shone, show-showed-shown, sing-sang-sung, sit-sat-sat, sleep-slept-slept, smell-smelt/smelled-smelt/smelled, speak-spoke-spoken, spend-spent-spent, spill-spilt/spilled-spilt/spilled, stand-stood-stood, steal-stole-stolen, swim-swam-swum, take-took-taken, teach-taught-taught, tell-told-told, think-thought-thought, throw-threw-thrown, understand-understood-understood, wake up-woke up-woken up, wear-wore-worn, win-won-won, write-wrote-written",
+    Y8: "be-was/were-been, beat-beat-beaten, become-became-become, begin-began-begun, bet-bet-bet, bite-bit-bitten, bleed-bled-bled, break-broke-broken, bring-brought-brought, build-built-built, burn-burnt/burned-burnt/burned, buy-bought-bought, catch-caught-caught, choose-chose-chosen, come-came-come, cost-cost-cost, cut-cut-cut, deal-dealt-dealt, do-did-done, draw-drew-drawn, dream-dreamt/dreamed-dreamt/dreamed, drink-drank-drunk, drive-drove-driven, eat-ate-eaten, fall-fell-fallen, feed-fed-fed, feel-felt-felt, fight-fought-fought, find-found-found, fly-flew-flown, forget-forgot-forgotten, get-got-got, give-gave-given, go-went-gone, grow-grew-grown, grow up-grew up-grown up, hang-hung-hung, have-had-had, hear-heard-heard, hide-hid-hidden, hit-hit-hit, hold-held-held, hurt-hurt-hurt, keep-kept-kept, know-knew-known, lead-led-led, leave-left-left, lend-lent-lent, let-let-let, lie-lay-lain, lose-lost-lost, make-made-made, mean-meant-meant, meet-met-met, pay-paid-paid, put-put-put, quit-quit-quit, read-read-read, ride-rode-ridden, ring-rang-rung, run-ran-run, say-said-said, see-saw-seen, sell-sold-sold, send-sent-sent, set off-set off-set off, shake-shook-shaken, shine-shone-shone, shoot-shot-shot, show-showed-shown, sing-sang-sung, sit-sat-sat, sleep-slept-slept, smell-smelt/smelled-smelt/smelled, speak-spoke-spoken, spend-spent-spent, spill-spilt/spilled-spilt/spilled, spread-spread-spread, stand-stood-stood, steal-stole-stolen, swear-swore-sworn, swim-swam-swum, take-took-taken, teach-taught-taught, tell-told-told, think-thought-thought, throw-threw-thrown, understand-understood-understood, wake up-woke up-woken up, wear-wore-worn, win-won-won, write-wrote-written",
+    Y9: "be-was/were-been, beat-beat-beaten, become-became-become, begin-began-begun, bet-bet-bet, bite-bit-bitten, bleed-bled-bled, break-broke-broken, bring-brought-brought, build-built-built, burn-burnt/burned-burnt/burned, buy-bought-bought, catch-caught-caught, choose-chose-chosen, come-came-come, cost-cost-cost, cut-cut-cut, deal-dealt-dealt, do-did-done, draw-drew-drawn, dream-dreamt/dreamed-dreamt/dreamed, drink-drank-drunk, drive-drove-driven, eat-ate-eaten, fall-fell-fallen, feed-fed-fed, feel-felt-felt, fight-fought-fought, find-found-found, fly-flew-flown, forget-forgot-forgotten, forgive-forgave-forgiven, get-got-got, give-gave-given, go-went-gone, grow-grew-grown, grow up-grew up-grown up, hang-hung-hung, have-had-had, hear-heard-heard, hide-hid-hidden, hit-hit-hit, hold-held-held, hurt-hurt-hurt, keep-kept-kept, know-knew-known, lay-laid-laid, lead-led-led, leave-left-left, lend-lent-lent, let-let-let, lie-lay-lain, lose-lost-lost, make-made-made, mean-meant-meant, meet-met-met, pay-paid-paid, put-put-put, quit-quit-quit, read-read-read, ride-rode-ridden, ring-rang-rung, run-ran-run, say-said-said, see-saw-seen, sell-sold-sold, send-sent-sent, set off-set off-set off, shake-shook-shaken, shine-shone-shone, shoot-shot-shot, show-showed-shown, sing-sang-sung, sit-sat-sat, sleep-slept-slept, smell-smelt/smelled-smelt/smelled, speak-spoke-spoken, spend-spent-spent, spill-spilt/spilled-spilt/spilled, spread-spread-spread, stand-stood-stood, steal-stole-stolen, swear-swore-sworn, swim-swam-swum, take-took-taken, teach-taught-taught, tell-told-told, think-thought-thought, throw-threw-thrown, understand-understood-understood, wake up-woke up-woken up, wear-wore-worn, win-won-won, write-wrote-written",
+    Y10: "be-was/were-been, beat-beat-beaten, become-became-become, begin-began-begun, bet-bet-bet, bite-bit-bitten, bleed-bled-bled, break-broke-broken, bring-brought-brought, build-built-built, burn-burnt/burned-burnt/burned, buy-bought-bought, catch-caught-caught, choose-chose-chosen, come-came-come, cost-cost-cost, cut-cut-cut, deal-dealt-dealt, do-did-done, draw-drew-drawn, dream-dreamt/dreamed-dreamt/dreamed, drink-drank-drunk, drive-drove-driven, eat-ate-eaten, fall-fell-fallen, feed-fed-fed, feel-felt-felt, fight-fought-fought, find-found-found, fly-flew-flown, forget-forgot-forgotten, forgive-forgave-forgiven, freeze-froze-frozen, get-got-got, give-gave-given, go-went-gone, grow-grew-grown, hang-hung-hung, have-had-had, hear-heard-heard, hide-hid-hidden, hit-hit-hit, hold-held-held, hurt-hurt-hurt, keep-kept-kept, know-knew-known, lay-laid-laid, lead-led-led, leave-left-left, lend-lent-lent, let-let-let, lie-lay-lain, light-lit/lighted-lit/lighted, lose-lost-lost, make-made-made, mean-meant-meant, meet-met-met, pay-paid-paid, put-put-put, quit-quit-quit, read-read-read, ride-rode-ridden, ring-rang-rung, rise-rose-risen, run-ran-run, say-said-said, see-saw-seen, sell-sold-sold, send-sent-sent, set off-set off-set off, shake-shook-shaken, shine-shone-shone, shoot-shot-shot, show-showed-shown, sing-sang-sung, sink-sank-sunk, sit-sat-sat, sleep-slept-slept, smell-smelt/smelled-smelt/smelled, speak-spoke-spoken, spend-spent-spent, spill-spilt/spilled-spilt/spilled, spread-spread-spread, stand-stood-stood, steal-stole-stolen, stick-stuck-stuck, strike-struck-struck, swear-swore-sworn, swim-swam-swum, take-took-taken, teach-taught-taught, tell-told-told, think-thought-thought, throw-threw-thrown, tread-trod-trodden/trod, understand-understood-understood, wake up-woke up-woken up, wear-wore-worn, win-won-won, write-wrote-written"
+};
+
+const DATA = {};
+
+function processData() {
+    for (let k in RAW_VERBS) {
+        DATA[k] = RAW_VERBS[k].split(', ').map(s => {
+            const p = s.split('-').map(x => x.trim());
+            const v1 = p[0], v2 = p[1], v3 = p[2];
+            let c = "ABC (2 changes)";
+            if(v1===v2 && v2===v3) c = "AAA (no change)";
+            else if(v1===v2 || v2===v3 || v1===v3) c = "1 change";
+            return {v1, v2, v3, c};
+        });
+    }
+}
+
+// ============================================================
+// AUDIO & GRAPHICS
+// ============================================================
+const AudioSys = {
+    ctx: null, 
+    play(f, d, type='sine', vol=0.05) {
+        try {
+            if(!this.ctx) this.ctx = new(window.AudioContext||window.webkitAudioContext)();
+            if(this.ctx.state==='suspended') this.ctx.resume();
+            const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+            o.connect(g); g.connect(this.ctx.destination);
+            o.type=type; o.frequency.value=f;
+            g.gain.setValueAtTime(vol, this.ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime+d);
+            o.start(); o.stop(this.ctx.currentTime+d);
+        } catch(e) {}
+    }
+};
+
+const Graphics = (function() {
+    let renderer, scene, camera, stars, bursts = [], clock = new THREE.Clock();
+    function init() {
+        try {
+            const c = document.getElementById('main-canvas');
+            renderer = new THREE.WebGLRenderer({ canvas:c, antialias:true, alpha:true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.z = 10;
+            const g = new THREE.BufferGeometry(); const p = new Float32Array(1000 * 3);
+            for(let i=0; i<3000; i++) p[i] = (Math.random()-0.5)*50;
+            g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+            stars = new THREE.Points(g, new THREE.PointsMaterial({size:0.05, color:0xffffff, transparent:true, opacity:0.3}));
+            scene.add(stars); animate();
+        } catch(e) {}
+    }
+    function triggerBurst(x, y, col) {
+        const ct = 20; const g = new THREE.BufferGeometry(); const p = new Float32Array(ct*3); const vs = [];
+        for(let i=0; i<ct; i++) {
+            p[i*3]=x; p[i*3+1]=y; p[i*3+2]=2;
+            const a=Math.random()*Math.PI*2; const s=Math.random()*0.2+0.1;
+            vs.push({vx:Math.cos(a)*s, vy:Math.sin(a)*s, l:1.0});
+        }
+        g.setAttribute('position', new THREE.BufferAttribute(p,3));
+        const pts = new THREE.Points(g, new THREE.PointsMaterial({size:0.1, color:col, transparent:true}));
+        scene.add(pts); bursts.push({pts, vs, p, m:pts.material});
+    }
+    function animate() {
+        requestAnimationFrame(animate); const d = clock.getDelta(); stars.rotation.y += d*0.02;
+        bursts.forEach((b,i)=>{
+            for(let j=0; j<b.vs.length; j++){
+                const v=b.vs[j]; if(v.l>0){b.p[j*3]+=v.vx; b.p[j*3+1]+=v.vy; v.vy-=0.004; v.l-=0.02;}
+            }
+            b.pts.geometry.attributes.position.needsUpdate=true; b.m.opacity=b.vs[0].l;
+            if(b.vs[0].l<=0){ scene.remove(b.pts); bursts.splice(i,1); }
+        });
+        renderer.render(scene, camera);
+    }
+    return { init, triggerBurst, screenTo3D: (el)=>{
+        const r=el.getBoundingClientRect(); const nx=((r.left+r.width/2)/window.innerWidth)*2-1;
+        const ny=-((r.top+r.height/2)/window.innerHeight)*2+1;
+        return {x:nx*12*(window.innerWidth/window.innerHeight), y:ny*12};
+    }};
+})();
+
+// ============================================================
+// APP CORE
+// ============================================================
+const App = {
+    state: { grade:'Y5', mode:'intro', pool:[], used:[], current:null, isSpinning:false, audio:null },
+    dom: {},
+
+    init() {
+        processData();
+        this.cacheDOM();
+        this.bindEvents();
+        Graphics.init();
+        this.resetPool();
+    },
+
+    cacheDOM() {
+        const ids = ['displayV1','valV1','valV2','valV3','card1','card2','card3','actionBtn','checkBtn','speakBtn','resetBtn','statusText','progressLabel','cycleLabel','progressFill','badgeText','gradeSwitcher'];
+        ids.forEach(id => this.dom[id] = document.getElementById(id));
+    },
+
+    bindEvents() {
+        this.dom.actionBtn.onclick = () => (this.state.mode==='intro') ? this.nextIntro() : this.spin();
+        this.dom.checkBtn.onclick = () => this.reveal();
+        this.dom.speakBtn.onclick = () => this.speakAll();
+        this.dom.resetBtn.onclick = () => this.resetPool();
+        document.getElementById('btnModeIntro').onclick = () => this.setMode('intro');
+        document.getElementById('btnModePractice').onclick = () => this.setMode('practice');
+        document.querySelectorAll('.g-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                this.state.grade = e.target.dataset.grade;
+                document.querySelectorAll('.g-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                this.resetPool();
+            };
+        });
+    },
+
+    setMode(m) {
+        this.state.mode = m;
+        document.getElementById('btnModeIntro').classList.toggle('active', m==='intro');
+        document.getElementById('btnModePractice').classList.toggle('active', m==='practice');
+        this.dom.actionBtn.textContent = (m==='intro') ? "Nächstes ▶" : "Spin!";
+        this.dom.checkBtn.style.display = (m==='intro') ? "none" : "block";
+        this.resetView();
+    },
+
+    resetPool() {
+        const d = DATA[this.state.grade];
+        this.state.pool = [...d].sort(() => Math.random()-0.5);
+        this.state.used = [];
+        this.updateUI();
+        this.resetView();
+        this.dom.statusText.textContent = `Grade ${this.state.grade} geladen.`;
+    },
+
+    updateUI() {
+        const total = DATA[this.state.grade].length;
+        this.dom.progressLabel.textContent = `${this.state.used.length} / ${total}`;
+        this.dom.progressFill.style.width = `${(this.state.used.length/total)*100}%`;
+    },
+
+    resetView() {
+        this.dom.displayV1.textContent = "READY";
+        this.dom.valV1.textContent = "—";
+        this.dom.valV2.textContent = (this.state.mode === 'intro') ? "—" : "???";
+        this.dom.valV3.textContent = (this.state.mode === 'intro') ? "—" : "???";
+        this.dom.valV2.classList.add('hidden-val');
+        this.dom.valV3.classList.add('hidden-val');
+        this.dom.card1.classList.remove('revealed');
+        this.dom.card2.classList.remove('revealed');
+        this.dom.card3.classList.remove('revealed');
+        this.dom.checkBtn.disabled = true; this.dom.speakBtn.disabled = true;
+    },
+
+    nextIntro() {
+        if(!this.state.pool.length) this.resetPool();
+        this.state.current = this.state.pool.pop();
+        this.state.used.push(this.state.current);
+        this.showVerb(true);
+        this.updateUI();
+        AudioSys.play(600, 0.1);
+    },
+
+    spin() {
+        if(this.state.isSpinning) return;
+        this.resetView();
+        if(!this.state.pool.length) this.resetPool();
+        this.state.isSpinning = true;
+        this.dom.actionBtn.disabled = true;
+        this.dom.displayV1.classList.add('spinning');
+        let i = 0;
+        const timer = setInterval(() => {
+            const d = DATA[this.state.grade];
+            this.dom.displayV1.textContent = d[Math.floor(Math.random()*d.length)].v1.toUpperCase();
+            AudioSys.play(200+(i%5)*50, 0.05, 'sawtooth', 0.03); // SPIN SOUND
+            if(++i > 15) { clearInterval(timer); this.finishSpin(); }
+        }, 80);
+    },
+
+    finishSpin() {
+        this.state.isSpinning = false;
+        this.dom.displayV1.classList.remove('spinning');
+        this.state.current = this.state.pool.pop();
+        this.state.used.push(this.state.current);
+        this.showVerb(false);
+        this.updateUI();
+        const p = Graphics.screenTo3D(this.dom.displayV1);
+        Graphics.triggerBurst(p.x, p.y, 0xf59e0b);
+        AudioSys.play(880, 0.2);
+        this.dom.actionBtn.disabled = false; this.dom.checkBtn.disabled = false; this.dom.speakBtn.disabled = false;
+        this.speak(this.state.current.v1);
+    },
+
+    showVerb(full) {
+        const v = this.state.current;
+        this.dom.displayV1.textContent = v.v1.toUpperCase();
+        this.dom.valV1.textContent = v.v1;
+        this.dom.card1.classList.add('revealed');
+        this.dom.badgeText.textContent = `Type: ${v.c}`;
+        if(full) {
+            this.dom.valV2.textContent = v.v2; this.dom.valV3.textContent = v.v3;
+            this.dom.valV2.classList.remove('hidden-val'); this.dom.valV3.classList.remove('hidden-val');
+            this.dom.card2.classList.add('revealed'); this.dom.card3.classList.add('revealed');
+            this.dom.speakBtn.disabled = false;
+            this.speakAll();
+        }
+    },
+
+    reveal() {
+        if(!this.state.current) return;
+        const v = this.state.current;
+        this.dom.valV2.textContent = v.v2; this.dom.valV3.textContent = v.v3;
+        this.dom.valV2.classList.remove('hidden-val'); this.dom.valV3.classList.remove('hidden-val');
+        this.dom.card2.classList.add('revealed'); this.dom.card3.classList.add('revealed');
+        const p2 = Graphics.screenTo3D(this.dom.card2);
+        const p3 = Graphics.screenTo3D(this.dom.card3);
+        Graphics.triggerBurst(p2.x, p2.y, 0x7c3aed); Graphics.triggerBurst(p3.x, p3.y, 0x7c3aed);
+        AudioSys.play(600, 0.1);
+        this.speakAll();
+    },
+
+    speak(txt) {
+        if(this.state.audio) this.state.audio.pause();
+        this.state.audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(txt.replace(/\//g, ' or '))}&tl=en&client=tw-ob`);
+        this.state.audio.play().catch(() => {
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(txt); u.lang='en-US'; u.rate=0.8;
+            speechSynthesis.speak(u);
+        });
+    },
+
+    speakAll() {
+        if(!this.state.current) return;
+        const v = this.state.current;
+        this.speak(`${v.v1}, ${v.v2}, ${v.v3}`);
+    }
+};
+
+window.onload = () => App.init();
+</script>
+</body>
+</html>
